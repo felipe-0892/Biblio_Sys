@@ -1,0 +1,12 @@
+{
+    "name": "biblioteca/sistema",
+    "description": "Sistema de Gerenciamento de Biblioteca",
+    "type": "project",
+    "require": {
+        "phpoffice/phpspreadsheet": "^5.1",
+        "mpdf/mpdf": "^8.2"
+    },
+    "config": {
+        "vendor-dir": "vendor"
+    }
+}

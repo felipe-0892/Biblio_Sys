@@ -1,0 +1,437 @@
+/* Variáveis CSS */
+:root {
+    --primary-color: #3b82f6;
+    --success-color: #059669;
+    --warning-color: #f59e0b;
+    --danger-color: #dc2626;
+    --dark-color: #1f2937;
+    --light-color: #f8fafc;
+}
+
+/* Estilos Gerais */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f5f5f5;
+    line-height: 1.6;
+}
+
+.hidden {
+    display: none !important;
+}
+
+/* Login Page */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:  #62289c;
+    padding: 20px;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    border: none;
+    border-radius: 15px;
+}
+
+.login-icon {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.login-icon i {
+    font-size: 3rem;
+    color: var(--primary-color);
+}
+
+.btn-primary-custom {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    padding: 10px 20px;
+    font-weight: 500;
+}
+
+.btn-primary-custom:hover {
+    background-color: #2563eb;
+    border-color: #2563eb;
+}
+
+.btn-success-custom {
+    background-color: var(--success-color);
+    border-color: var(--success-color);
+    color: white;
+}
+
+.btn-success-custom:hover {
+    background-color: #047857;
+    border-color: #047857;
+    color: white;
+}
+
+/* Dashboard Header */
+.dashboard-header {
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 1rem 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+}
+
+.header-logo {
+    width: 40px;
+    height: 40px;
+    background: var(--primary-color);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+/* Stat Cards */
+.stat-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.stat-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+/* Action Cards */
+.action-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.action-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.action-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Activity Items */
+.activity-item {
+    padding: 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    transition: background-color 0.2s;
+}
+
+.activity-item:hover {
+    background-color: #f9fafb;
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Badges */
+.badge-available {
+    background-color: #d1fae5;
+    color: #065f46;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-ontime {
+    background-color: #dbeafe;
+    color: #1e40af;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.badge-late {
+    background-color: #fecaca;
+    color: #dc2626;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* Modals */
+.modal-content {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+.modal-header {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 1.5rem;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+/* Tabs */
+.nav-tabs {
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    color: #6b7280;
+    font-weight: 500;
+    padding: 0.75rem 1rem;
+    border-radius: 8px 8px 0 0;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: transparent;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--primary-color);
+}
+
+.nav-tabs .nav-link:hover {
+    border: none;
+    color: var(--primary-color);
+}
+
+/* Tables */
+.table {
+    margin-bottom: 0;
+}
+
+.table th {
+    background-color: #f8fafc;
+    border-bottom: 1px solid #e5e7eb;
+    font-weight: 600;
+    color: #374151;
+    padding: 0.75rem;
+}
+
+.table td {
+    padding: 0.75rem;
+    vertical-align: middle;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f9fafb;
+}
+
+/* Alerts */
+.alert-custom {
+    background-color: #eff6ff;
+    border: 1px solid #dbeafe;
+    color: #1e40af;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.alert-danger-custom {
+    background-color: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+/* Form Controls */
+.form-control, .form-select {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 0.75rem;
+    transition: all 0.2s;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.input-group-text {
+    background-color: #f8fafc;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+}
+
+/* Buttons */
+.btn {
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-sm {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+}
+
+.btn-group .btn {
+    border-radius: 0;
+}
+
+.btn-group .btn:first-child {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.btn-group .btn:last-child {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+/* Toast */
+.toast {
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .dashboard-header .btn-sm {
+        font-size: 0.75rem;
+        padding: 0.375rem 0.75rem;
+    }
+    
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+    
+    .action-card .btn {
+        font-size: 0.875rem;
+    }
+}
+
+/* Loading States */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* Empty States */
+.empty-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #6b7280;
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* Navigation Cards */
+.navigation-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    background: white;
+    color: #374151;
+}
+
+.navigation-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+    color: #374151;
+}
+
+.nav-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+/* Se quiser manter alguns stats, pode adicionar esta seção opcional abaixo dos navigation cards */
+.quick-stats {
+    margin-top: 2rem;
+}
+
+.stats-mini {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+    padding: 1rem;
+}
+
+.stats-mini .stat-item {
+    text-align: center;
+    padding: 0.5rem;
+}
+
+.stats-mini .stat-number {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+}
+
+.stats-mini .stat-label {
+    font-size: 0.75rem;
+    opacity: 0.9;
+}
+
+/* Cores dos exemplares */
+.badge-exemplares-1 {
+    background-color: #dc3545; /* Vermelho */
+    color: #fff;
+}
+
+.badge-exemplares-2-5 {
+    background-color: #fd7e14; /* Laranja */
+    color: #fff;
+}
+
+.badge-exemplares-6-8 {
+    background-color: #0dcaf0; /* Azul-claro */
+    color: #fff;
+}
+
+.badge-exemplares-9-plus {
+    background-color: #198754; /* Verde */
+    color: #fff;
+}

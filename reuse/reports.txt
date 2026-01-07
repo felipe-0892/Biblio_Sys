@@ -1,0 +1,242 @@
+<?php
+require_once '../config/db.php';
+
+$pageTitle = 'Relatórios';
+$message = '';
+$messageType = '';
+
+// Buscar dados para relatórios
+try {
+    // Livros mais emprestados
+    $livrosMaisEmprestados = $pdo->query("
+        SELECT b.titulo, b.autor, COUNT(l.id) as total_emprestimos 
+        FROM books b 
+        LEFT JOIN loans l ON b.id = l.book_id 
+        GROUP BY b.id 
+        ORDER BY total_emprestimos DESC 
+        LIMIT 10
+    ")->fetchAll();
+    
+    // Usuários com devoluções pendentes
+    $usuariosPendentes = $pdo->query("
+        SELECT u.nome, u.matricula, COUNT(l.id) as emprestimos_pendentes 
+        FROM users u 
+        JOIN loans l ON u.id = l.user_id 
+        WHERE l.status IN ('ativo', 'vencido') 
+        GROUP BY u.id 
+        ORDER BY emprestimos_pendentes DESC
+    ")->fetchAll();
+    
+    // Estatísticas gerais
+    $stats = $pdo->query("
+        SELECT 
+            (SELECT COUNT(*) FROM books) as total_livros,
+            (SELECT COUNT(*) FROM users) as total_usuarios,
+            (SELECT COUNT(*) FROM loans WHERE status = 'ativo') as emprestimos_ativos,
+            (SELECT COUNT(*) FROM loans WHERE status = 'vencido') as emprestimos_vencidos,
+            (SELECT COUNT(*) FROM loans WHERE status = 'devolvido') as emprestimos_devolvidos
+    ")->fetch();
+    
+    // Empréstimos por mês (últimos 6 meses)
+    $emprestimosPorMes = $pdo->query("
+        SELECT 
+            DATE_FORMAT(data_emprestimo, '%Y-%m') as mes,
+            COUNT(*) as total
+        FROM loans 
+        WHERE data_emprestimo >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+        GROUP BY DATE_FORMAT(data_emprestimo, '%Y-%m')
+        ORDER BY mes DESC
+    ")->fetchAll();
+    
+} catch (PDOException $e) {
+    $message = 'Erro ao carregar relatórios: ' . $e->getMessage();
+    $messageType = 'danger';
+    $livrosMaisEmprestados = [];
+    $usuariosPendentes = [];
+    $stats = ['total_livros' => 0, 'total_usuarios' => 0, 'emprestimos_ativos' => 0, 'emprestimos_vencidos' => 0, 'emprestimos_devolvidos' => 0];
+    $emprestimosPorMes = [];
+}
+
+include '../includes/nav-pages.php';
+?>
+
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-12">
+            <h2><i class="fas fa-chart-bar"></i> Relatórios e Estatísticas</h2>
+            
+            <?php if ($message): ?>
+                <div class="alert alert-<?= $messageType ?> alert-dismissible fade show" role="alert">
+                    <?= htmlspecialchars($message) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+            
+            <!-- Estatísticas Gerais -->
+            <div class="row mb-4">
+                <div class="col-md-2 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas fa-book fa-2x text-primary mb-2"></i>
+                            <h5 class="card-title">Total de Livros</h5>
+                            <p class="card-text display-6 text-primary"><?= $stats['total_livros'] ?></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas fa-users fa-2x text-success mb-2"></i>
+                            <h5 class="card-title">Total de Usuários</h5>
+                            <p class="card-text display-6 text-success"><?= $stats['total_usuarios'] ?></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas fa-exchange-alt fa-2x text-warning mb-2"></i>
+                            <h5 class="card-title">Empréstimos Ativos</h5>
+                            <p class="card-text display-6 text-warning"><?= $stats['emprestimos_ativos'] ?></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas fa-exclamation-triangle fa-2x text-danger mb-2"></i>
+                            <h5 class="card-title">Empréstimos Vencidos</h5>
+                            <p class="card-text display-6 text-danger"><?= $stats['emprestimos_vencidos'] ?></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas fa-check-circle fa-2x text-secondary mb-2"></i>
+                            <h5 class="card-title">Empréstimos Devolvidos</h5>
+                            <p class="card-text display-6 text-secondary"><?= $stats['emprestimos_devolvidos'] ?></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 mb-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <i class="fas fa-chart-line fa-2x text-info mb-2"></i>
+                            <h5 class="card-title">Total Geral</h5>
+                            <p class="card-text display-6 text-info"><?= $stats['emprestimos_ativos'] + $stats['emprestimos_vencidos'] + $stats['emprestimos_devolvidos'] ?></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <!-- Livros Mais Emprestados -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-trophy"></i> Livros Mais Emprestados</h5>
+                        </div>
+                        <div class="card-body">
+                            <?php if (empty($livrosMaisEmprestados)): ?>
+                                <p class="text-muted">Nenhum empréstimo registrado ainda.</p>
+                            <?php else: ?>
+                                <div class="list-group">
+                                    <?php foreach ($livrosMaisEmprestados as $index => $livro): ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong><?= htmlspecialchars($livro['titulo']) ?></strong>
+                                                <br><small class="text-muted"><?= htmlspecialchars($livro['autor']) ?></small>
+                                            </div>
+                                            <span class="badge bg-primary rounded-pill">
+                                                <?= $livro['total_emprestimos'] ?> empréstimos
+                                            </span>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Usuários com Devoluções Pendentes -->
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-clock"></i> Usuários com Devoluções Pendentes</h5>
+                        </div>
+                        <div class="card-body">
+                            <?php if (empty($usuariosPendentes)): ?>
+                                <p class="text-muted">Nenhuma devolução pendente.</p>
+                            <?php else: ?>
+                                <div class="list-group">
+                                    <?php foreach ($usuariosPendentes as $usuario): ?>
+                                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong><?= htmlspecialchars($usuario['nome']) ?></strong>
+                                                <br><small class="text-muted"><?= htmlspecialchars($usuario['matricula']) ?></small>
+                                            </div>
+                                            <span class="badge bg-warning rounded-pill">
+                                                <?= $usuario['emprestimos_pendentes'] ?> pendente(s)
+                                            </span>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Empréstimos por Mês -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Empréstimos por Mês (Últimos 6 meses)</h5>
+                        </div>
+                        <div class="card-body">
+                            <?php if (empty($emprestimosPorMes)): ?>
+                                <p class="text-muted">Nenhum empréstimo registrado nos últimos 6 meses.</p>
+                            <?php else: ?>
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Mês</th>
+                                                <th>Total de Empréstimos</th>
+                                                <th>Progresso</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <?php 
+                                            $maxEmprestimos = max(array_column($emprestimosPorMes, 'total'));
+                                            foreach ($emprestimosPorMes as $mes): 
+                                                $mesFormatado = date('m/Y', strtotime($mes['mes'] . '-01'));
+                                                $percentual = $maxEmprestimos > 0 ? ($mes['total'] / $maxEmprestimos) * 100 : 0;
+                                            ?>
+                                                <tr>
+                                                    <td><?= $mesFormatado ?></td>
+                                                    <td><?= $mes['total'] ?></td>
+                                                    <td>
+                                                        <div class="progress" style="height: 20px;">
+                                                            <div class="progress-bar" role="progressbar" style="width: <?= $percentual ?>%">
+                                                                <?= $mes['total'] ?>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php include '../includes/footer-pages.php'; ?>

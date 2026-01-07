@@ -1,0 +1,282 @@
+<?php
+require_once '../config/db.php';
+
+$pageTitle = 'Gerenciamento de Empréstimos';
+$message = '';
+$messageType = '';
+
+$today = date('Y-m-d');
+
+// Verificar e atualizar status vencidos
+try {
+    $stmt = $pdo->prepare("SELECT * FROM loans WHERE status = 'ativo' AND data_devolucao < ?");
+    $stmt->execute([$today]);
+    $vencidos = $stmt->fetchAll();
+
+    foreach ($vencidos as $loan) {
+        $update = $pdo->prepare("UPDATE loans SET status = 'vencido' WHERE id = ?");
+        $update->execute([$loan['id']]);
+
+        // Buscar email do usuário para notificação
+        $userStmt = $pdo->prepare("SELECT email FROM users WHERE id = ?");
+        $userStmt->execute([$loan['user_id']]);
+        $user = $userStmt->fetch();
+
+        if ($user && !empty($user['email'])) {
+            // Aqui você pode implementar envio de email
+            error_log("Empréstimo vencido - Usuário: {$user['email']}, Livro ID: {$loan['book_id']}");
+        }
+    }
+} catch (PDOException $e) {
+    error_log("Erro ao verificar empréstimos vencidos: " . $e->getMessage());
+}
+
+// Processamento de formulários
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    try {
+        if (isset($_POST['loan'])) {
+            $book_id = (int) $_POST['book_id'];
+            $user_id = (int) $_POST['user_id'];
+            $rental_days = isset($_POST['rental_days']) ? (int) $_POST['rental_days'] : 7;
+            $data_emprestimo = $today;
+            $data_devolucao = date('Y-m-d', strtotime("+{$rental_days} days"));
+
+            // Verificar disponibilidade
+            $bookStmt = $pdo->prepare("SELECT num_exemplares FROM books WHERE id = ?");
+            $bookStmt->execute([$book_id]);
+            $book = $bookStmt->fetch();
+
+            if (!$book) {
+                throw new Exception('Livro não encontrado.');
+            }
+
+            $activeLoansStmt = $pdo->prepare("SELECT COUNT(*) FROM loans WHERE book_id = ? AND status = 'ativo'");
+            $activeLoansStmt->execute([$book_id]);
+            $activeLoans = $activeLoansStmt->fetchColumn();
+
+            if ($activeLoans >= $book['num_exemplares']) {
+                throw new Exception('Livro indisponível. Todos os exemplares estão emprestados.');
+            }
+
+            // Verificar se usuário já tem empréstimo ativo deste livro
+            $userLoanStmt = $pdo->prepare("SELECT COUNT(*) FROM loans WHERE user_id = ? AND book_id = ? AND status = 'ativo'");
+            $userLoanStmt->execute([$user_id, $book_id]);
+            if ($userLoanStmt->fetchColumn() > 0) {
+                throw new Exception('Usuário já possui este livro emprestado.');
+            }
+
+            $stmt = $pdo->prepare("INSERT INTO loans (book_id, user_id, data_emprestimo, data_devolucao, status) VALUES (?, ?, ?, ?, 'ativo')");
+            $stmt->execute([$book_id, $user_id, $data_emprestimo, $data_devolucao]);
+            $message = 'Empréstimo realizado com sucesso!';
+            $messageType = 'success';
+
+        } elseif (isset($_POST['return'])) {
+            $id = (int) $_POST['loan_id'];
+            $condition = $_POST['condition'] ?? 'good';
+            $observacoes = trim($_POST['observacoes'] ?? '');
+
+            $stmt = $pdo->prepare("UPDATE loans SET status = 'devolvido', data_devolucao_real = ?, observacoes = ? WHERE id = ?");
+            $stmt->execute([$today, $observacoes, $id]);
+            $message = 'Livro devolvido com sucesso!';
+            $messageType = 'success';
+        }
+    } catch (Exception $e) {
+        $message = $e->getMessage();
+        $messageType = 'danger';
+    }
+}
+
+// Buscar dados
+try {
+    // $loans = $pdo->query("
+    //     SELECT l.*, b.titulo, u.nome, u.matricula 
+    //     FROM loans l 
+    //     JOIN books b ON l.book_id = b.id 
+    //     JOIN users u ON l.user_id = u.id 
+    //     ORDER BY l.data_emprestimo DESC
+    // ")->fetchAll();
+    $loans = $pdo->query("
+    SELECT l.*, b.titulo, u.nome, u.matricula 
+    FROM loans l 
+    JOIN books b ON l.book_id = b.id 
+    JOIN users u ON l.user_id = u.id 
+    WHERE l.status IN ('ativo', 'vencido')
+    ORDER BY l.data_emprestimo DESC
+")->fetchAll();
+
+    $books = $pdo->query("SELECT id, titulo FROM books ORDER BY titulo")->fetchAll();
+    $users = $pdo->query("SELECT id, nome, matricula FROM users ORDER BY nome")->fetchAll();
+} catch (PDOException $e) {
+    $loans = [];
+    $books = [];
+    $users = [];
+    $message = 'Erro ao carregar dados.';
+    $messageType = 'danger';
+}
+
+include '../includes/nav-pages.php';
+?>
+
+<div class="container mt-5">
+    <div class="row">
+        <div class="col-12">
+            <h2><i class="fas fa-exchange-alt"></i> Gerenciamento de Empréstimos</h2>
+
+            <?php if ($message): ?>
+                <div class="alert alert-<?= $messageType ?> alert-dismissible fade show" role="alert">
+                    <?= htmlspecialchars($message) ?>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            <?php endif; ?>
+
+            <!-- Formulário de Empréstimo -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Realizar Novo Empréstimo</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="book_id" class="form-label">Livro *</label>
+                                <select name="book_id" id="book_id" class="form-select" required>
+                                    <option value="">Selecione um livro</option>
+                                    <?php foreach ($books as $book): ?>
+                                        <option value="<?= $book['id'] ?>"><?= htmlspecialchars($book['titulo']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="user_id" class="form-label">Usuário *</label>
+                                <select name="user_id" id="user_id" class="form-select" required>
+                                    <option value="">Selecione um usuário</option>
+                                    <?php foreach ($users as $user): ?>
+                                        <option value="<?= $user['id'] ?>"><?= htmlspecialchars($user['nome']) ?>
+                                            (<?= htmlspecialchars($user['matricula']) ?>)</option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Data do Empréstimo</label>
+                                <input type="date" class="form-control">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Data de Devolução</label>
+                                <input type="date" class="form-control">
+                            </div>
+                        </div>
+                        <button type="submit" name="loan" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Realizar Empréstimo
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Lista de Empréstimos -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Histórico de Empréstimos</h5>
+                    <span class="badge bg-primary"><?= count($loans) ?> empréstimos</span>
+                </div>
+                <div class="card-body">
+                    <!-- 🔹 Filtro de Status -->
+                    <form method="GET" class="mb-3 d-flex align-items-center">
+                        <label for="status" class="me-2">Filtrar por status:</label>
+                        <select name="status" id="status" class="form-select me-2" style="width:auto;">
+                            <option value="">Todos</option>
+                            <option value="ativo" <?= ($_GET['status'] ?? '') == 'ativo' ? 'selected' : '' ?>>Ativo
+                            </option>
+                            <option value="vencido" <?= ($_GET['status'] ?? '') == 'vencido' ? 'selected' : '' ?>>Vencido
+                            </option>
+                            <option value="devolvido" <?= ($_GET['status'] ?? '') == 'devolvido' ? 'selected' : '' ?>>
+                                Devolvido</option>
+                        </select>
+                        <button type="submit" class="btn btn-secondary btn-sm">Filtrar</button>
+                    </form>
+
+                    <?php
+                    // 🔹 Aplicar filtro se selecionado
+                    $statusFilter = $_GET['status'] ?? '';
+                    $sql = "
+            SELECT l.*, b.titulo, u.nome, u.matricula 
+            FROM loans l 
+            JOIN books b ON l.book_id = b.id 
+            JOIN users u ON l.user_id = u.id
+        ";
+                    if ($statusFilter) {
+                        $sql .= " WHERE l.status = " . $pdo->quote($statusFilter);
+                    }
+                    $sql .= " ORDER BY l.data_emprestimo DESC";
+                    $loans = $pdo->query($sql)->fetchAll();
+                    ?>
+
+                    <?php if (empty($loans)): ?>
+                        <div class="text-center py-4">
+                            <i class="fas fa-exchange-alt fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Nenhum empréstimo encontrado.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <!-- <th>ID</th> -->
+                                        <th>Livro</th>
+                                        <th>Usuário</th>
+                                        <th>Data Empréstimo</th>
+                                        <th>Data Devolução</th>
+                                        <th>Status</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($loans as $loan): ?>
+                                        <tr>
+                                            <!-- <td><?= $loan['id'] ?></td> -->
+                                            <td><?= htmlspecialchars($loan['titulo']) ?></td>
+                                            <td>
+                                                <?= htmlspecialchars($loan['nome']) ?>
+                                                <br><small
+                                                    class="text-muted"><?= htmlspecialchars($loan['matricula']) ?></small>
+                                            </td>
+                                            <td><?= date('d/m/Y', strtotime($loan['data_emprestimo'])) ?></td>
+                                            <td><?= date('d/m/Y', strtotime($loan['data_devolucao'])) ?></td>
+                                            <td>
+                                                <?php
+                                                $statusClass = match ($loan['status']) {
+                                                    'ativo' => 'bg-success',
+                                                    'vencido' => 'bg-danger',
+                                                    'devolvido' => 'bg-secondary',
+                                                    default => 'bg-light'
+                                                };
+                                                ?>
+                                                <span class="badge <?= $statusClass ?>"><?= ucfirst($loan['status']) ?></span>
+                                            </td>
+                                            <td>
+                                                <?php if ($loan['status'] == 'ativo' || $loan['status'] == 'vencido'): ?>
+                                                    <form method="POST" style="display:inline;"
+                                                        onsubmit="return confirm('Confirmar devolução do livro?')">
+                                                        <input type="hidden" name="loan_id" value="<?= $loan['id'] ?>">
+                                                        <button type="submit" name="return" class="btn btn-sm btn-success">
+                                                            <i class="fas fa-check"></i> Devolver
+                                                        </button>
+                                                    </form>
+                                                <?php else: ?>
+                                                    <span class="text-muted">Devolvido</span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php include '../includes/footer-pages.php'; ?>

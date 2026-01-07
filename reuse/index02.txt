@@ -1,0 +1,254 @@
+<?php 
+require_once 'config/db.php';
+$pageTitle = 'Sistema de Gerenciamento de Biblioteca';
+
+// Buscar estatísticas do banco de dados
+try {
+    $stats = $pdo->query("
+        SELECT 
+            (SELECT COUNT(*) FROM books) as total_livros,
+            (SELECT COUNT(*) FROM users) as total_usuarios,
+            (SELECT COUNT(*) FROM loans WHERE status = 'ativo') as emprestimos_ativos,
+            (SELECT COUNT(*) FROM loans WHERE DATE(data_devolucao_real) = CURDATE() AND status = 'devolvido') as devolucoes_hoje
+    ")->fetch();
+    
+    // Buscar atividades recentes
+    $atividades = $pdo->query("
+        SELECT l.*, b.titulo, u.nome, u.matricula,
+               CASE 
+                   WHEN l.status = 'ativo' THEN 'aluguel'
+                   WHEN l.status = 'devolvido' THEN 'devolucao'
+                   ELSE 'outro'
+               END as tipo_atividade
+        FROM loans l 
+        JOIN books b ON l.book_id = b.id 
+        JOIN users u ON l.user_id = u.id 
+        ORDER BY l.created_at DESC 
+        LIMIT 10
+    ")->fetchAll();
+    
+    // Buscar livros para modal de aluguel
+    $livros_disponiveis = $pdo->query("
+        SELECT b.*, 
+               (b.num_exemplares - COALESCE(COUNT(l.id), 0)) as exemplares_disponiveis
+        FROM books b 
+        LEFT JOIN loans l ON b.id = l.book_id AND l.status = 'ativo'
+        GROUP BY b.id
+        HAVING exemplares_disponiveis > 0
+        ORDER BY b.titulo
+    ")->fetchAll();
+    
+    // Buscar usuários para modal de aluguel
+    $usuarios = $pdo->query("SELECT id, nome, matricula FROM users ORDER BY nome")->fetchAll();
+    
+    // Buscar empréstimos ativos para modal de devolução
+    $emprestimos_ativos = $pdo->query("
+        SELECT l.*, b.titulo, u.nome, u.matricula,
+               CASE 
+                   WHEN l.data_devolucao < CURDATE() THEN 1 
+                   ELSE 0 
+               END as atrasado
+        FROM loans l 
+        JOIN books b ON l.book_id = b.id 
+        JOIN users u ON l.user_id = u.id 
+        WHERE l.status = 'ativo'
+        ORDER BY l.data_devolucao ASC
+    ")->fetchAll();
+    
+} catch (PDOException $e) {
+    $stats = ['total_livros' => 0, 'total_usuarios' => 0, 'emprestimos_ativos' => 0, 'devolucoes_hoje' => 0];
+    $atividades = [];
+    $livros_disponiveis = [];
+    $usuarios = [];
+    $emprestimos_ativos = [];
+}
+?>
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= $pageTitle ?></title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link href="assets/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="loginPage" class="login-container">
+        <div class="card shadow-lg login-card">
+            <div class="card-body p-4">
+                <div class="login-icon">
+                    <i class="bi bi-book"></i>
+                </div>
+                <h2 class="card-title text-center mb-2">Sistema de Biblioteca</h2>
+                <p class="text-center text-muted mb-2">Entre com suas credenciais para acessar o sistema</p>
+                <p class="text-center text-secondary mb-2">Login: seu nome | Senha: 1q2w3e</p>
+                <!-- definir o login e senha caso for para prod -->
+                <form id="loginForm">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Usuário</label>
+                        <input type="text" class="form-control" id="username" placeholder="Digite seu usuário" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Senha</label>
+                        <input type="password" class="form-control" id="password" placeholder="Digite sua senha" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary-custom w-100">Entrar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Page -->
+    <div id="dashboardPage" class="hidden">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="container-fluid">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <div class="d-flex align-items-center">
+                            <div class="header-logo">
+                                <i class="bi bi-book"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h5 class="mb-0">Sistema de Biblioteca</h5>
+                                <small class="text-muted">Bem-vindo, <span id="currentUserName"></span></small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="d-flex gap-2">
+                            <!-- <a href="pages/books.php" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-book me-1"></i>Gerenciar Livros
+                            </a>
+                            <a href="pages/users.php" class="btn btn-outline-success btn-sm">
+                                <i class="bi bi-people me-1"></i>Gerenciar Usuários
+                            </a>
+                            <a href="pages/loans.php" class="btn btn-outline-info btn-sm">
+                                <i class="bi bi-arrow-left-right me-1"></i>Empréstimos
+                            </a> -->
+                            <button class="btn btn-outline-secondary btn-sm" id="logoutBtn">
+                                <i class="bi bi-box-arrow-right me-1"></i>Sair
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container-fluid py-4">
+            <!-- Navigation Cards -->
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <a href="pages/users.php" class="card navigation-card h-100 text-decoration-none">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Cadastrar</p>
+                                    <h5 class="mb-0">Usuários</h5>
+                                </div>
+                                <div class="nav-icon" style="background-color: #8b5cf6;">
+                                    <i class="bi bi-people"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <small class="text-muted">Gerenciar usuários do sistema</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <a href="pages/books.php" class="card navigation-card h-100 text-decoration-none">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Cadastrar</p>
+                                    <h5 class="mb-0">Livros</h5>
+                                </div>
+                                <div class="nav-icon" style="background-color: #3b82f6;">
+                                    <i class="bi bi-book"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <small class="text-muted">Gerenciar acervo de livros</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <a href="pages/loans.php" class="card navigation-card h-100 text-decoration-none">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Gerenciar</p>
+                                    <h5 class="mb-0">Empréstimos</h5>
+                                </div>
+                                <div class="nav-icon" style="background-color: #059669;">
+                                    <i class="bi bi-arrow-left-right"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <small class="text-muted">Controle de empréstimos</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <a href="pages/reports.php" class="card navigation-card h-100 text-decoration-none">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Visualizar</p>
+                                    <h5 class="mb-0">Relatórios</h5>
+                                </div>
+                                <div class="nav-icon" style="background-color: #f97316;">
+                                    <i class="bi bi-graph-up-arrow"></i>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <small class="text-muted">Relatórios do sistema</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals (mantenha os modais existentes) -->
+    <!-- Rental Modal -->
+    <div class="modal fade" id="rentalModal" tabindex="-1" aria-labelledby="rentalModalLabel" aria-hidden="true">
+        <!-- ... conteúdo do modal rental ... -->
+    </div>
+
+    <!-- Return Modal -->
+    <div class="modal fade" id="returnModal" tabindex="-1" aria-labelledby="returnModalLabel" aria-hidden="true">
+        <!-- ... conteúdo do modal return ... -->
+    </div>
+
+    <!-- Toast Container -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11000">
+        <div id="successToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <span id="toastMessage"></span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/main.js"></script>
+</body>
+</html>

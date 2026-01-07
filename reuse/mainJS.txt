@@ -1,0 +1,380 @@
+// JavaScript para o Sistema de Biblioteca
+
+// State
+let currentUser = '';
+let selectedBook = '';
+let selectedRental = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Elements
+    const loginPage = document.getElementById('loginPage');
+    const dashboardPage = document.getElementById('dashboardPage');
+    const loginForm = document.getElementById('loginForm');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const currentUserName = document.getElementById('currentUserName');
+
+    // Login functionality
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (username && password) {
+                currentUser = username;
+                if (currentUserName) {
+                    currentUserName.textContent = username;
+                }
+                if (loginPage) loginPage.classList.add('hidden');
+                if (dashboardPage) dashboardPage.classList.remove('hidden');
+            }
+        });
+    }
+
+    // Logout functionality
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            currentUser = '';
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            if (usernameInput) usernameInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+            if (loginPage) loginPage.classList.remove('hidden');
+            if (dashboardPage) dashboardPage.classList.add('hidden');
+        });
+    }
+
+    // Book Search functionality
+    const bookSearch = document.getElementById('bookSearch');
+    const booksTableBody = document.getElementById('booksTableBody');
+    
+    if (bookSearch && booksTableBody) {
+        bookSearch.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = booksTableBody.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                const title = row.cells[0].textContent.toLowerCase();
+                const author = row.cells[1].textContent.toLowerCase();
+                
+                if (title.includes(searchTerm) || author.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Select Book functionality
+    document.querySelectorAll('.select-book-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            selectedBook = e.target.dataset.book;
+            const bookId = e.target.dataset.bookId;
+            const rentalBookInput = document.getElementById('rentalBook');
+            const rentalBookIdInput = document.getElementById('rentalBookId');
+            
+            if (rentalBookInput) {
+                rentalBookInput.value = selectedBook;
+            }
+            if (rentalBookIdInput) {
+                rentalBookIdInput.value = bookId;
+            }
+            
+            // Switch to rental tab
+            const rentalTab = document.getElementById('rental-tab');
+            if (rentalTab) {
+                const tab = new bootstrap.Tab(rentalTab);
+                tab.show();
+            }
+        });
+    });
+
+    // Update Return Date functionality
+    const rentalDays = document.getElementById('rentalDays');
+    const returnDate = document.getElementById('returnDate');
+    
+    function updateReturnDate() {
+        if (rentalDays && returnDate) {
+            const days = parseInt(rentalDays.value);
+            const date = new Date();
+            date.setDate(date.getDate() + days);
+            returnDate.textContent = date.toLocaleDateString('pt-BR');
+        }
+    }
+    
+    if (rentalDays) {
+        rentalDays.addEventListener('change', updateReturnDate);
+        updateReturnDate();
+    }
+
+    // Rental Form Submit
+    const rentalForm = document.getElementById('rentalForm');
+    if (rentalForm) {
+        rentalForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const user = document.getElementById('rentalUser');
+            const book = document.getElementById('rentalBook');
+            
+            if (user && book && user.value && book.value) {
+                showToast('Aluguel registrado com sucesso!');
+                
+                // Reset form
+                rentalForm.reset();
+                if (book) book.value = '';
+                selectedBook = '';
+                updateReturnDate();
+                
+                // Switch back to search tab
+                const searchTab = document.getElementById('search-tab');
+                if (searchTab) {
+                    const tab = new bootstrap.Tab(searchTab);
+                    tab.show();
+                }
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('rentalModal'));
+                if (modal) modal.hide();
+            }
+        });
+    }
+
+    // Rental Search functionality
+    const rentalSearch = document.getElementById('rentalSearch');
+    const rentalsTableBody = document.getElementById('rentalsTableBody');
+    
+    if (rentalSearch && rentalsTableBody) {
+        rentalSearch.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = rentalsTableBody.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                const book = row.cells[0].textContent.toLowerCase();
+                const user = row.cells[1].textContent.toLowerCase();
+                
+                if (book.includes(searchTerm) || user.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Select Rental for Return functionality
+    document.querySelectorAll('.select-rental-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            selectedRental = JSON.parse(e.target.dataset.rental);
+            
+            // Fill return form
+            const returnBookName = document.getElementById('returnBookName');
+            const returnUserName = document.getElementById('returnUserName');
+            const returnRentalDate = document.getElementById('returnRentalDate');
+            const returnExpectedDate = document.getElementById('returnExpectedDate');
+            const returnLoanId = document.getElementById('returnLoanId');
+            
+            if (returnBookName) returnBookName.textContent = selectedRental.book;
+            if (returnUserName) returnUserName.textContent = selectedRental.user;
+            if (returnRentalDate) returnRentalDate.textContent = selectedRental.rentalDate;
+            if (returnExpectedDate) returnExpectedDate.textContent = selectedRental.returnDate;
+            if (returnLoanId) returnLoanId.value = selectedRental.id;
+            
+            // Show/hide late alert
+            const lateAlert = document.getElementById('lateAlert');
+            if (lateAlert) {
+                if (selectedRental.isLate) {
+                    const lateFee = (Math.floor(Math.random() * 5) + 1) * 2;
+                    const lateFeeElement = document.getElementById('lateFee');
+                    if (lateFeeElement) {
+                        lateFeeElement.textContent = lateFee.toFixed(2);
+                    }
+                    lateAlert.classList.remove('hidden');
+                } else {
+                    lateAlert.classList.add('hidden');
+                }
+            }
+            
+            // Update current return date
+            const currentReturnDate = document.getElementById('currentReturnDate');
+            if (currentReturnDate) {
+                currentReturnDate.textContent = new Date().toLocaleDateString('pt-BR');
+            }
+            
+            // Show form
+            const noSelectionMessage = document.getElementById('noSelectionMessage');
+            const returnForm = document.getElementById('returnForm');
+            if (noSelectionMessage) noSelectionMessage.classList.add('hidden');
+            if (returnForm) returnForm.classList.remove('hidden');
+            
+            // Switch to return tab
+            const returnTab = document.getElementById('return-tab');
+            if (returnTab) {
+                const tab = new bootstrap.Tab(returnTab);
+                tab.show();
+            }
+        });
+    });
+
+    // Back to Active Rentals functionality
+    const backToActiveBtn = document.getElementById('backToActiveBtn');
+    if (backToActiveBtn) {
+        backToActiveBtn.addEventListener('click', () => {
+            selectedRental = null;
+            const returnForm = document.getElementById('returnForm');
+            const noSelectionMessage = document.getElementById('noSelectionMessage');
+            if (returnForm) returnForm.classList.add('hidden');
+            if (noSelectionMessage) noSelectionMessage.classList.remove('hidden');
+            
+            // Switch to active tab
+            const activeTab = document.getElementById('active-tab');
+            if (activeTab) {
+                const tab = new bootstrap.Tab(activeTab);
+                tab.show();
+            }
+        });
+    }
+
+    // Return Form Submit functionality
+    const returnForm = document.getElementById('returnForm');
+    if (returnForm) {
+        returnForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            if (selectedRental) {
+                showToast('Devolução registrada com sucesso!');
+                
+                // Reset
+                selectedRental = null;
+                returnForm.reset();
+                const returnFormElement = document.getElementById('returnForm');
+                const noSelectionMessage = document.getElementById('noSelectionMessage');
+                if (returnFormElement) returnFormElement.classList.add('hidden');
+                if (noSelectionMessage) noSelectionMessage.classList.remove('hidden');
+                
+                // Switch back to active tab
+                const activeTab = document.getElementById('active-tab');
+                if (activeTab) {
+                    const tab = new bootstrap.Tab(activeTab);
+                    tab.show();
+                }
+                
+                // Close modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('returnModal'));
+                if (modal) modal.hide();
+            }
+        });
+    }
+
+    // Confirmação para exclusão
+    const deleteButtons = document.querySelectorAll('button[name="delete"]');
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            if (!confirm('Tem certeza que deseja excluir este item?')) {
+                e.preventDefault();
+            }
+        });
+    });
+
+    // Auto-hide alerts
+    const alerts = document.querySelectorAll('.alert');
+    alerts.forEach(alert => {
+        setTimeout(() => {
+            alert.style.opacity = '0';
+            setTimeout(() => {
+                alert.remove();
+            }, 300);
+        }, 5000);
+    });
+
+    // Form validation
+    const forms = document.querySelectorAll('form');
+    forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            const requiredFields = form.querySelectorAll('[required]');
+            let isValid = true;
+            
+            requiredFields.forEach(field => {
+                if (!field.value.trim()) {
+                    field.classList.add('is-invalid');
+                    isValid = false;
+                } else {
+                    field.classList.remove('is-invalid');
+                }
+            });
+            
+            if (!isValid) {
+                e.preventDefault();
+                alert('Por favor, preencha todos os campos obrigatórios.');
+            }
+        });
+    });
+
+    // Search functionality enhancement
+    const searchInput = document.querySelector('input[name="query"]');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const query = this.value.toLowerCase();
+            const tableRows = document.querySelectorAll('tbody tr');
+            
+            tableRows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                if (text.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Tooltip initialization
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Reset modals when closed
+    const rentalModal = document.getElementById('rentalModal');
+    if (rentalModal) {
+        rentalModal.addEventListener('hidden.bs.modal', () => {
+            selectedBook = '';
+            if (rentalForm) rentalForm.reset();
+            const rentalBookInput = document.getElementById('rentalBook');
+            if (rentalBookInput) rentalBookInput.value = '';
+            const searchTab = document.getElementById('search-tab');
+            if (searchTab) {
+                const tab = new bootstrap.Tab(searchTab);
+                tab.show();
+            }
+        });
+    }
+
+    const returnModal = document.getElementById('returnModal');
+    if (returnModal) {
+        returnModal.addEventListener('hidden.bs.modal', () => {
+            selectedRental = null;
+            if (returnForm) returnForm.reset();
+            const returnFormElement = document.getElementById('returnForm');
+            const noSelectionMessage = document.getElementById('noSelectionMessage');
+            if (returnFormElement) returnFormElement.classList.add('hidden');
+            if (noSelectionMessage) noSelectionMessage.classList.remove('hidden');
+            const activeTab = document.getElementById('active-tab');
+            if (activeTab) {
+                const tab = new bootstrap.Tab(activeTab);
+                tab.show();
+            }
+        });
+    }
+});
+
+// Toast Notification
+function showToast(message) {
+    const toastMessage = document.getElementById('toastMessage');
+    const toastEl = document.getElementById('successToast');
+    if (toastMessage) toastMessage.textContent = message;
+    if (toastEl) {
+        const toast = new bootstrap.Toast(toastEl);
+        toast.show();
+    }
+}

@@ -1,0 +1,552 @@
+<?php 
+require_once 'config/db.php';
+$pageTitle = 'Sistema de Gerenciamento de Biblioteca';
+
+// Buscar estatísticas do banco de dados
+try {
+    $stats = $pdo->query("
+        SELECT 
+            (SELECT COUNT(*) FROM books) as total_livros,
+            (SELECT COUNT(*) FROM users) as total_usuarios,
+            (SELECT COUNT(*) FROM loans WHERE status = 'ativo') as emprestimos_ativos,
+            (SELECT COUNT(*) FROM loans WHERE DATE(data_devolucao) = CURDATE() AND status = 'devolvido') as devolucoes_hoje
+    ")->fetch();
+    
+    // Buscar atividades recentes
+    $atividades = $pdo->query("
+        SELECT l.*, b.titulo, u.nome, u.matricula,
+               CASE 
+                   WHEN l.status = 'ativo' THEN 'aluguel'
+                   WHEN l.status = 'devolvido' THEN 'devolucao'
+                   ELSE 'outro'
+               END as tipo_atividade
+        FROM loans l 
+        JOIN books b ON l.book_id = b.id 
+        JOIN users u ON l.user_id = u.id 
+        ORDER BY l.created_at DESC 
+        LIMIT 10
+    ")->fetchAll();
+    
+    // Buscar livros para modal de aluguel
+    $livros_disponiveis = $pdo->query("
+        SELECT b.*, 
+               (b.num_exemplares - COALESCE(COUNT(l.id), 0)) as exemplares_disponiveis
+        FROM books b 
+        LEFT JOIN loans l ON b.id = l.book_id AND l.status = 'ativo'
+        GROUP BY b.id
+        HAVING exemplares_disponiveis > 0
+        ORDER BY b.titulo
+    ")->fetchAll();
+    
+    // Buscar usuários para modal de aluguel
+    $usuarios = $pdo->query("SELECT id, nome, matricula FROM users ORDER BY nome")->fetchAll();
+    
+    // Buscar empréstimos ativos para modal de devolução
+    $emprestimos_ativos = $pdo->query("
+        SELECT l.*, b.titulo, u.nome, u.matricula,
+               CASE 
+                   WHEN l.data_devolucao < CURDATE() THEN 1 
+                   ELSE 0 
+               END as atrasado
+        FROM loans l 
+        JOIN books b ON l.book_id = b.id 
+        JOIN users u ON l.user_id = u.id 
+        WHERE l.status = 'ativo'
+        ORDER BY l.data_devolucao ASC
+    ")->fetchAll();
+    
+} catch (PDOException $e) {
+    $stats = ['total_livros' => 0, 'total_usuarios' => 0, 'emprestimos_ativos' => 0, 'devolucoes_hoje' => 0];
+    $atividades = [];
+    $livros_disponiveis = [];
+    $usuarios = [];
+    $emprestimos_ativos = [];
+}
+?>
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= $pageTitle ?></title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Custom CSS -->
+    <link href="assets/css/style.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="loginPage" class="login-container">
+        <div class="card shadow-lg login-card">
+            <div class="card-body p-4">
+                <div class="login-icon">
+                    <i class="bi bi-book"></i>
+                </div>
+                <h2 class="card-title text-center mb-2">Sistema de Biblioteca</h2>
+                <p class="text-center text-muted mb-4">Entre com suas credenciais para acessar o sistema</p>
+                
+                <form id="loginForm">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Usuário</label>
+                        <input type="text" class="form-control" id="username" placeholder="Digite seu usuário" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Senha</label>
+                        <input type="password" class="form-control" id="password" placeholder="Digite sua senha" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary-custom w-100">Entrar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Page -->
+    <div id="dashboardPage" class="hidden">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="container-fluid">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <div class="d-flex align-items-center">
+                            <div class="header-logo">
+                                <i class="bi bi-book"></i>
+                            </div>
+                            <div class="ms-3">
+                                <h5 class="mb-0">Sistema de Biblioteca</h5>
+                                <small class="text-muted">Bem-vindo, <span id="currentUserName"></span></small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <div class="d-flex gap-2">
+                            <a href="pages/books.php" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-book me-1"></i>Gerenciar Livros
+                            </a>
+                            <a href="pages/users.php" class="btn btn-outline-success btn-sm">
+                                <i class="bi bi-people me-1"></i>Gerenciar Usuários
+                            </a>
+                            <button class="btn btn-outline-secondary btn-sm" id="logoutBtn">
+                                <i class="bi bi-box-arrow-right me-1"></i>Sair
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container-fluid py-4">
+            <!-- Stats Grid -->
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="card stat-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Total de Livros</p>
+                                    <h3 class="mb-0"><?= $stats['total_livros'] ?></h3>
+                                </div>
+                                <div class="stat-icon" style="background-color: #3b82f6;">
+                                    <i class="bi bi-book"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="card stat-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Livros Alugados</p>
+                                    <h3 class="mb-0"><?= $stats['emprestimos_ativos'] ?></h3>
+                                </div>
+                                <div class="stat-icon" style="background-color: #059669;">
+                                    <i class="bi bi-bookmark-plus"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="card stat-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Usuários Ativos</p>
+                                    <h3 class="mb-0"><?= $stats['total_usuarios'] ?></h3>
+                                </div>
+                                <div class="stat-icon" style="background-color: #8b5cf6;">
+                                    <i class="bi bi-people"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-3">
+                    <div class="card stat-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="text-muted mb-1 small">Devoluções Hoje</p>
+                                    <h3 class="mb-0"><?= $stats['devolucoes_hoje'] ?></h3>
+                                </div>
+                                <div class="stat-icon" style="background-color: #f97316;">
+                                    <i class="bi bi-graph-up-arrow"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Cards -->
+            <div class="row g-3 mb-4">
+                <div class="col-12 col-md-6">
+                    <div class="card action-card h-100" data-bs-toggle="modal" data-bs-target="#rentalModal">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="action-icon" style="background-color: #d1fae5;">
+                                    <i class="bi bi-bookmark-plus" style="color: #059669;"></i>
+                                </div>
+                                <div class="ms-3">
+                                    <h5 class="card-title mb-0">Aluguel de Livros</h5>
+                                    <p class="text-muted mb-0 small">Registrar novo aluguel de livro</p>
+                                </div>
+                            </div>
+                            <button class="btn btn-success-custom w-100">Abrir Aluguel</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <div class="card action-card h-100" data-bs-toggle="modal" data-bs-target="#returnModal">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center mb-3">
+                                <div class="action-icon" style="background-color: #dbeafe;">
+                                    <i class="bi bi-bookmark-check" style="color: #3b82f6;"></i>
+                                </div>
+                                <div class="ms-3">
+                                    <h5 class="card-title mb-0">Devolução de Livros</h5>
+                                    <p class="text-muted mb-0 small">Registrar devolução de livro</p>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary w-100">Abrir Devolução</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-2">Atividades Recentes</h5>
+                    <p class="text-muted small mb-4">Últimas transações registradas no sistema</p>
+                    
+                    <?php if (empty($atividades)): ?>
+                        <div class="text-center py-4">
+                            <i class="bi bi-clock-history fa-3x text-muted mb-3"></i>
+                            <p class="text-muted">Nenhuma atividade recente registrada.</p>
+                        </div>
+                    <?php else: ?>
+                        <?php foreach ($atividades as $atividade): ?>
+                            <div class="activity-item">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <div class="activity-icon" style="background-color: <?= $atividade['tipo_atividade'] == 'aluguel' ? '#d1fae5' : '#dbeafe' ?>;">
+                                            <i class="bi bi-<?= $atividade['tipo_atividade'] == 'aluguel' ? 'bookmark-plus' : 'bookmark-check' ?>" style="color: <?= $atividade['tipo_atividade'] == 'aluguel' ? '#059669' : '#3b82f6' ?>;"></i>
+                                        </div>
+                                        <div class="ms-3">
+                                            <p class="mb-0"><?= htmlspecialchars($atividade['titulo']) ?></p>
+                                            <small class="text-muted"><?= htmlspecialchars($atividade['nome']) ?> (<?= htmlspecialchars($atividade['matricula']) ?>)</small>
+                                        </div>
+                                    </div>
+                                    <div class="text-end">
+                                        <p class="mb-0 small <?= $atividade['tipo_atividade'] == 'aluguel' ? 'text-success' : 'text-primary' ?>">
+                                            <?= $atividade['tipo_atividade'] == 'aluguel' ? 'Aluguel' : 'Devolução' ?>
+                                        </p>
+                                        <small class="text-muted"><?= date('d/m/Y H:i', strtotime($atividade['created_at'])) ?></small>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Rental Modal -->
+    <div class="modal fade" id="rentalModal" tabindex="-1" aria-labelledby="rentalModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="rentalModalLabel">
+                            <i class="bi bi-bookmark-plus me-2"></i>Aluguel de Livros
+                        </h5>
+                        <p class="text-muted mb-0 small">Busque um livro disponível e registre o aluguel</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs mb-4" id="rentalTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="search-tab" data-bs-toggle="tab" data-bs-target="#search-panel" type="button" role="tab">
+                                Buscar Livro
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="rental-tab" data-bs-toggle="tab" data-bs-target="#rental-panel" type="button" role="tab">
+                                Registrar Aluguel
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="search-panel" role="tabpanel">
+                            <div class="mb-3">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    <input type="text" class="form-control" id="bookSearch" placeholder="Buscar por título ou autor...">
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Título</th>
+                                            <th>Autor</th>
+                                            <th>Editora</th>
+                                            <th>Disponível</th>
+                                            <th>Ação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="booksTableBody">
+                                        <?php foreach ($livros_disponiveis as $livro): ?>
+                                            <tr>
+                                                <td><?= htmlspecialchars($livro['titulo']) ?></td>
+                                                <td><?= htmlspecialchars($livro['autor']) ?></td>
+                                                <td><?= htmlspecialchars($livro['editora'] ?? '') ?></td>
+                                                <td><span class="badge badge-available"><?= $livro['exemplares_disponiveis'] ?> exemplar(es)</span></td>
+                                                <td><button class="btn btn-sm btn-primary select-book-btn" data-book="<?= htmlspecialchars($livro['titulo']) ?>" data-book-id="<?= $livro['id'] ?>">Selecionar</button></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="rental-panel" role="tabpanel">
+                            <form id="rentalForm" method="POST" action="pages/loans.php">
+                                <input type="hidden" name="book_id" id="rentalBookId">
+                                <div class="mb-3">
+                                    <label for="rentalUser" class="form-label">Usuário</label>
+                                    <select class="form-select" id="rentalUser" name="user_id" required>
+                                        <option value="">Selecione o usuário</option>
+                                        <?php foreach ($usuarios as $usuario): ?>
+                                            <option value="<?= $usuario['id'] ?>"><?= htmlspecialchars($usuario['nome']) ?> (<?= htmlspecialchars($usuario['matricula']) ?>)</option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="rentalBook" class="form-label">Livro Selecionado</label>
+                                    <input type="text" class="form-control bg-light" id="rentalBook" readonly placeholder="Selecione um livro na aba 'Buscar Livro'">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="rentalDays" class="form-label">Período de Aluguel</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="bi bi-calendar"></i></span>
+                                        <select class="form-select" id="rentalDays" name="rental_days">
+                                            <option value="7">7 dias</option>
+                                            <option value="14">14 dias</option>
+                                            <option value="21">21 dias</option>
+                                            <option value="30">30 dias</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="alert alert-custom">
+                                    <strong>Data de Devolução Prevista:</strong> <span id="returnDate"></span>
+                                </div>
+
+                                <div class="d-flex gap-2">
+                                    <button type="submit" name="loan" class="btn btn-success-custom flex-fill">Confirmar Aluguel</button>
+                                    <button type="button" class="btn btn-outline-secondary flex-fill" data-bs-dismiss="modal">Cancelar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Return Modal -->
+    <div class="modal fade" id="returnModal" tabindex="-1" aria-labelledby="returnModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title" id="returnModalLabel">
+                            <i class="bi bi-bookmark-check me-2"></i>Devolução de Livros
+                        </h5>
+                        <p class="text-muted mb-0 small">Busque um aluguel ativo e registre a devolução</p>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <ul class="nav nav-tabs mb-4" id="returnTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="active-tab" data-bs-toggle="tab" data-bs-target="#active-panel" type="button" role="tab">
+                                Aluguéis Ativos
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="return-tab" data-bs-toggle="tab" data-bs-target="#return-panel" type="button" role="tab">
+                                Registrar Devolução
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="active-panel" role="tabpanel">
+                            <div class="mb-3">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    <input type="text" class="form-control" id="rentalSearch" placeholder="Buscar por livro ou usuário...">
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Livro</th>
+                                            <th>Usuário</th>
+                                            <th>Data Aluguel</th>
+                                            <th>Data Devolução</th>
+                                            <th>Status</th>
+                                            <th>Ação</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="rentalsTableBody">
+                                        <?php foreach ($emprestimos_ativos as $emprestimo): ?>
+                                            <tr>
+                                                <td><?= htmlspecialchars($emprestimo['titulo']) ?></td>
+                                                <td><?= htmlspecialchars($emprestimo['nome']) ?></td>
+                                                <td><?= date('d/m/Y', strtotime($emprestimo['data_emprestimo'])) ?></td>
+                                                <td><?= date('d/m/Y', strtotime($emprestimo['data_devolucao'])) ?></td>
+                                                <td>
+                                                    <span class="badge <?= $emprestimo['atrasado'] ? 'badge-late' : 'badge-ontime' ?>">
+                                                        <?= $emprestimo['atrasado'] ? 'Atrasado' : 'No Prazo' ?>
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-primary select-rental-btn" 
+                                                            data-rental='{"id":"<?= $emprestimo['id'] ?>","book":"<?= htmlspecialchars($emprestimo['titulo']) ?>","user":"<?= htmlspecialchars($emprestimo['nome']) ?>","rentalDate":"<?= date('d/m/Y', strtotime($emprestimo['data_emprestimo'])) ?>","returnDate":"<?= date('d/m/Y', strtotime($emprestimo['data_devolucao'])) ?>","isLate":<?= $emprestimo['atrasado'] ? 'true' : 'false' ?>}'>
+                                                        Devolver
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="tab-pane fade" id="return-panel" role="tabpanel">
+                            <div id="noSelectionMessage" class="text-center py-5">
+                                <i class="bi bi-bookmark-check" style="font-size: 3rem; color: #9ca3af;"></i>
+                                <p class="text-muted mt-3">Selecione um aluguel na aba "Aluguéis Ativos"</p>
+                            </div>
+
+                            <form id="returnForm" method="POST" action="pages/loans.php" class="hidden">
+                                <input type="hidden" name="loan_id" id="returnLoanId">
+                                <div class="bg-light p-3 rounded mb-3">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <p class="text-muted small mb-1">Livro</p>
+                                            <p class="mb-0" id="returnBookName"></p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p class="text-muted small mb-1">Usuário</p>
+                                            <p class="mb-0" id="returnUserName"></p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p class="text-muted small mb-1">Data de Aluguel</p>
+                                            <p class="mb-0" id="returnRentalDate"></p>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p class="text-muted small mb-1">Data Prevista</p>
+                                            <p class="mb-0" id="returnExpectedDate"></p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="lateAlert" class="alert alert-danger-custom d-flex align-items-start hidden mb-3">
+                                    <i class="bi bi-exclamation-circle me-2 mt-1"></i>
+                                    <div>
+                                        <p class="mb-0"><strong>Devolução Atrasada</strong></p>
+                                        <p class="mb-0 small">Multa estimada: R$ <span id="lateFee">0.00</span></p>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Condição do Livro</label>
+                                    <div class="btn-group w-100" role="group">
+                                        <input type="radio" class="btn-check" name="condition" id="conditionGood" value="good" checked>
+                                        <label class="btn btn-outline-success" for="conditionGood">Ótima</label>
+
+                                        <input type="radio" class="btn-check" name="condition" id="conditionFair" value="fair">
+                                        <label class="btn btn-outline-warning" for="conditionFair">Regular</label>
+
+                                        <input type="radio" class="btn-check" name="condition" id="conditionPoor" value="poor">
+                                        <label class="btn btn-outline-danger" for="conditionPoor">Danificado</label>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="returnNotes" class="form-label">Observações (opcional)</label>
+                                    <input type="text" class="form-control" id="returnNotes" name="observacoes" placeholder="Digite observações sobre a devolução...">
+                                </div>
+
+                                <div class="alert alert-custom">
+                                    <strong>Data de Devolução:</strong> <span id="currentReturnDate"></span>
+                                </div>
+
+                                <div class="d-flex gap-2">
+                                    <button type="submit" name="return" class="btn btn-primary flex-fill">Confirmar Devolução</button>
+                                    <button type="button" class="btn btn-outline-secondary flex-fill" id="backToActiveBtn">Voltar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11000">
+        <div id="successToast" class="toast align-items-center text-white bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body">
+                    <span id="toastMessage"></span>
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="assets/js/main.js"></script>
+</body>
+</html>
