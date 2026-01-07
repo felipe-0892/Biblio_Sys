@@ -695,12 +695,12 @@ Sob as condições:
 
 ## 👨‍💻 Autor e Contato
 
-**Sistema de Gerenciamento de Biblioteca Escolar**
+**Sistema de Gerenciamento de Biblioteca Escolar - BiblioSys**
 
 Desenvolvido com ❤️ para facilitar o gerenciamento de bibliotecas
 
 Para dúvidas, sugestões ou suporte:
-- 📧 E-mail: [seu-email@exemplo.com]
+- 📧 E-mail: [felipesilva892@gmail.com]
 - 🐛 Issues: [GitHub Issues]
 - 📚 Documentação: Ver este arquivo README.md
 
@@ -731,6 +731,6 @@ Este projeto demonstra:
 
 ---
 
-**Última atualização:** 10/2025  
+**Última atualização:** 12/2025  
 **Versão:** 1.0.1  
 **Status do Projeto:** ✅ Em Produção
