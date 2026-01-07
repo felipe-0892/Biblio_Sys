@@ -2,7 +2,8 @@
 
 Sistema web desenvolvido em **PHP** para automação completa do gerenciamento de bibliotecas escolares, incluindo controle de acervo, cadastro de usuários, empréstimos, devoluções e geração de relatórios detalhados.
 
-
+<img src="image01.png">
+<img src="image02.png">
 
 ## 📋 Sumário
 
